@@ -224,7 +224,6 @@ def monitor(
     scheme = urlparse(url).scheme.lower()
     previous_status: bool | None = None
     status_changed_at = time.monotonic()
-    started_at = status_changed_at
 
     print(f"[{now_stamp()}] monitoring {url} every {interval:.1f}s")
 
