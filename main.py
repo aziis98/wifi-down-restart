@@ -70,11 +70,11 @@ def resolve_target(url: str) -> tuple[str, int, str]:
     return parsed.hostname, port, path
 
 
-def tcp_probe(host: str, port: int, path: str, scheme: str, timeout: float) -> tuple[bool, str]:
+def tcp_probe(host: str, port: int, path: str, scheme: str, timeout: float) -> tuple[bool, str, float | None]:
     try:
         address_info = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
-        return False, str(exc)
+        return False, str(exc), None
 
     last_error: Exception | None = None
 
@@ -86,22 +86,31 @@ def tcp_probe(host: str, port: int, path: str, scheme: str, timeout: float) -> t
 
                 request = f"HEAD {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n"
 
-                if scheme == "https":
-                    context = ssl.create_default_context()
-                    with context.wrap_socket(sock, server_hostname=host) as tls_sock:
-                        tls_sock.sendall(request.encode("utf-8"))
-                        tls_sock.recv(1024)
-                else:
-                    sock.sendall(request.encode("utf-8"))
-                    sock.recv(1024)
+                # measure latency: time from sending request to receiving first response bytes
+                try:
+                    if scheme == "https":
+                        context = ssl.create_default_context()
+                        with context.wrap_socket(sock, server_hostname=host) as tls_sock:
+                            start = time.monotonic()
+                            tls_sock.sendall(request.encode("utf-8"))
+                            tls_sock.recv(1024)
+                            latency_ms = (time.monotonic() - start) * 1000.0
+                    else:
+                        start = time.monotonic()
+                        sock.sendall(request.encode("utf-8"))
+                        sock.recv(1024)
+                        latency_ms = (time.monotonic() - start) * 1000.0
+                except Exception:
+                    # if sending/receiving fails, propagate to outer except handler
+                    raise
 
-                return True, f"connected to {sockaddr[0]}:{sockaddr[1]}"
+                return True, f"connected to {sockaddr[0]}:{sockaddr[1]}", latency_ms
         except Exception as exc:  # noqa: BLE001
             last_error = exc
 
     if last_error is None:
-        return False, "no address information available"
-    return False, str(last_error)
+        return False, "no address information available", None
+    return False, str(last_error), None
 
 
 def read_tcp_counters() -> dict[str, int]:
@@ -231,7 +240,7 @@ def monitor(
         while True:
             started = time.monotonic()
             tcp_before = read_tcp_counters()
-            probe_ok, probe_message = tcp_probe(host, port, path, scheme, timeout)
+            probe_ok, probe_message, probe_latency = tcp_probe(host, port, path, scheme, timeout)
             tcp_after = read_tcp_counters()
 
             if previous_status is None:
@@ -242,13 +251,18 @@ def monitor(
             else:
                 status_note = f"since {format_minutes_since(status_changed_at)}"
 
-            print(f"[{now_stamp()}] probe={'ok' if probe_ok else 'fail'} {probe_message}")
+            latency_str = f"{probe_latency:.1f}ms" if probe_latency is not None else "n/a"
+            print(
+                f"[{now_stamp()}] probe={'ok' if probe_ok else 'fail'} {probe_message} latency={latency_str}"
+            )
             tcp_delta = format_tcp_delta(tcp_before, tcp_after)
             print(f"[{now_stamp()}] tcp delta: {tcp_delta} ({status_note})")
 
             if notify and previous_status is not None and probe_ok != previous_status:
                 status = "OK" if probe_ok else "FAILED"
-                body = f"{url}\nTCP: {tcp_delta or 'no delta reported'}\n{probe_message}"
+                body = (
+                    f"{url}\nLatency: {latency_str}\nTCP: {tcp_delta or 'no delta reported'}\n{probe_message}"
+                )
                 send_notification(f"Network probe {status}", body, success=probe_ok)
 
             if restart_wifi_on_drop and previous_status is True and not probe_ok:
