@@ -92,7 +92,12 @@ def tcp_probe(host: str, port: int, path: str, scheme: str, timeout: float) -> t
         except socket.gaierror as exc:
             return False, str(exc), None
     else:
-        resolver = dns.resolver.Resolver()
+        try:
+            resolver = dns.resolver.Resolver()
+        except dns.resolver.NoResolverConfiguration:
+            resolver = dns.resolver.Resolver(configure=False)
+            resolver.nameservers = ["8.8.8.8", "1.1.1.1", "8.8.4.4", "1.0.0.1"]
+
         resolver.timeout = timeout
         resolver.lifetime = timeout
 
