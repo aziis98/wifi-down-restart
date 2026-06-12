@@ -6,6 +6,8 @@ import ssl
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 from shutil import which
 from typing import Protocol, runtime_checkable
@@ -32,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--timeout",
         type=float,
         default=5.0,
-        help="Timeout for the TCP probe in seconds. Default: 5",
+        help="Timeout for DNS lookup and TCP probe in seconds. Default: 5",
     )
     parser.add_argument(
         "--notify",
@@ -70,11 +72,65 @@ def resolve_target(url: str) -> tuple[str, int, str]:
     return parsed.hostname, port, path
 
 
+def is_ip_address(host: str) -> bool:
+    for family in (socket.AF_INET, socket.AF_INET6):
+        try:
+            socket.inet_pton(family, host)
+            return True
+        except OSError:
+            pass
+    return False
+
+
 def tcp_probe(host: str, port: int, path: str, scheme: str, timeout: float) -> tuple[bool, str, float | None]:
-    try:
-        address_info = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    except socket.gaierror as exc:
-        return False, str(exc), None
+    import dns.resolver
+    import dns.exception
+
+    if is_ip_address(host):
+        try:
+            address_info = socket.getaddrinfo(host, port, 0, socket.SOCK_STREAM)
+        except socket.gaierror as exc:
+            return False, str(exc), None
+    else:
+        resolver = dns.resolver.Resolver()
+        resolver.timeout = timeout
+        resolver.lifetime = timeout
+
+        address_info = []
+        dns_errors = []
+        start_time = time.monotonic()
+
+        # Try resolving A records (IPv4)
+        try:
+            answers = resolver.resolve(host, "A")
+            for rdata in answers:
+                address_info.append((socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (rdata.address, port)))
+        except (dns.resolver.LifetimeTimeout, dns.resolver.Timeout) as exc:
+            dns_errors.append(exc)
+        except Exception as exc:
+            dns_errors.append(exc)
+
+        # Update remaining timeout for AAAA records (IPv6)
+        elapsed = time.monotonic() - start_time
+        remaining = timeout - elapsed
+        if remaining > 0:
+            resolver.timeout = remaining
+            resolver.lifetime = remaining
+            try:
+                answers = resolver.resolve(host, "AAAA")
+                for rdata in answers:
+                    address_info.append((socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (rdata.address, port, 0, 0)))
+            except (dns.resolver.LifetimeTimeout, dns.resolver.Timeout) as exc:
+                dns_errors.append(exc)
+            except Exception as exc:
+                dns_errors.append(exc)
+
+        if not address_info:
+            if any(isinstance(err, (dns.resolver.LifetimeTimeout, dns.resolver.Timeout)) for err in dns_errors):
+                return False, f"DNS lookup timed out after {timeout:.1f}s", None
+            if dns_errors:
+                return False, f"DNS resolution failed: {dns_errors[-1]}", None
+            return False, "no address information available", None
 
     last_error: Exception | None = None
 
