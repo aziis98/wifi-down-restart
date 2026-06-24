@@ -137,9 +137,24 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
         const restartWifiStrategy = this._settings.get_string('restart-wifi-strategy') || 'auto';
         const wifiFilter = this._settings.get_string('wifi-filter') || '';
 
-        // Resolve interpreter and script paths relative to the extension directory
-        const pythonFile = this._extension.dir.get_parent().get_child('.venv').get_child('bin').get_child('python');
-        const scriptFile = this._extension.dir.get_parent().get_child('main.py');
+        // Resolve extension directory in case it's a symbolic link (common for local dev installations)
+        let extDir = this._extension.dir;
+        try {
+            let info = extDir.query_info(
+                'standard::is-symlink,standard::symlink-target',
+                Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS,
+                null
+            );
+            if (info.get_is_symlink()) {
+                let target = info.get_symlink_target();
+                extDir = extDir.get_parent().resolve_relative_path(target);
+            }
+        } catch (e) {
+            console.error(`[WiFi Down Restart] Error checking symlink: ${e.message}`);
+        }
+
+        const pythonFile = extDir.get_parent().get_child('.venv').get_child('bin').get_child('python');
+        const scriptFile = extDir.get_parent().get_child('main.py');
 
         let pythonPath = 'python3';
         if (pythonFile.query_exists(null)) {
