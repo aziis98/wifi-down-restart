@@ -241,13 +241,15 @@ class RestartWifiDbus:
             "org.freedesktop.NetworkManager.Enable",
         ]
 
-        subprocess.run(
-            command_base + ["false"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
-        time.sleep(1.0)
-        subprocess.run(
-            command_base + ["true"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-        )
+        try:
+            subprocess.run(
+                command_base + ["false"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        finally:
+            time.sleep(1.0)
+            subprocess.run(
+                command_base + ["true"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
 
 
 class RestartWifiNmcli:
@@ -255,19 +257,21 @@ class RestartWifiNmcli:
         return which("nmcli") is not None
 
     def restart(self) -> None:
-        subprocess.run(
-            ["nmcli", "radio", "wifi", "off"],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        time.sleep(1.0)
-        subprocess.run(
-            ["nmcli", "radio", "wifi", "on"],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            subprocess.run(
+                ["nmcli", "radio", "wifi", "off"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        finally:
+            time.sleep(1.0)
+            subprocess.run(
+                ["nmcli", "radio", "wifi", "on"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
 
 def select_restart_wifi_strategy(strategy_name: str) -> RestartWifiStrategy | None:

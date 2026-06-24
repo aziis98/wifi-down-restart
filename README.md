@@ -41,6 +41,8 @@ Run the monitor script:
 
 ## GNOME Shell Extension (GNOME 45+)
 
+<img src="docs/gnome-extension.png" align="right" width="280" alt="GNOME Extension UI">
+
 The bundled GNOME extension provides a native wrapper for the Python script.
 
 ### Local Installation
