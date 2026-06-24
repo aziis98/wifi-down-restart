@@ -1,6 +1,6 @@
-# WiFi Down Restart (`track-unipisa-down`)
+# WiFi Down Restart
 
-A lightweight connection monitoring tool and GNOME Shell Extension that periodically probes a target URL to check internet connectivity, monitors TCP outbound packet counts, and automatically restarts the Wi-Fi interface if the connection drops.
+A lightweight connection monitoring tool and GNOME Shell Extension created to keep your internet connection alive on unstable networks (looking at you, *eduroam* and university Wi-Fi). It periodically probes a target URL, monitors outbound TCP packet counts, and automatically power-cycles the Wi-Fi interface if the connection drops.
 
 ## Features
 - **Low-level TCP tracking**: Measures latency and monitors packet segment counts (e.g. `OutSegs`, `InSegs`, `RetransSegs`) without requiring `sudo`.
