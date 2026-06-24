@@ -151,7 +151,7 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
             scriptPath = scriptFile.get_path();
         }
 
-        let argv = [pythonPath, scriptPath, url];
+        let argv = [pythonPath, '-u', scriptPath, url];
         argv.push('--interval', String(interval));
         argv.push('--timeout', String(timeout));
         if (notify) {
