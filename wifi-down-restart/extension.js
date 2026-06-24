@@ -5,7 +5,6 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import NM from 'gi://NM';
 import St from 'gi://St';
 
 // Promisify read_line_async
@@ -47,12 +46,6 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
         });
         this.menu.addMenuItem(this._prefsItem);
 
-        // Track active connection using NetworkManager
-        this._nmClient = NM.Client.new(null);
-        this._nmSignalId = this._nmClient.connect('notify::active-connections', () => {
-            this._onNetworkChanged();
-        });
-
         // Track GSettings changes
         this._settingsSignalId = this._settings.connect('changed', (settings, key) => {
             this._onSettingsChanged(key);
@@ -65,66 +58,20 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
         this.connect('notify::checked', () => {
             this._isToggledOn = this.checked;
             if (this._isToggledOn) {
-                this._onNetworkChanged();
+                this._startMonitoring();
             } else {
                 this._stopMonitoring();
             }
         });
     }
 
-    _getWifiSSID() {
-        const devices = this._nmClient.get_devices();
-        for (let device of devices) {
-            if (device instanceof NM.DeviceWifi) {
-                let activeAp = device.get_active_access_point();
-                if (activeAp) {
-                    let ssidBytes = activeAp.get_ssid();
-                    if (ssidBytes) {
-                        return NM.utils_ssid_to_utf8(ssidBytes.get_data());
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    _onNetworkChanged() {
-        if (!this._isToggledOn) {
-            return;
-        }
-
-        const currentSsid = this._getWifiSSID();
-        const filterStr = this._settings.get_string('wifi-filter') || '';
-        const filters = filterStr.split(',')
-            .map(s => s.trim())
-            .filter(s => s.length > 0);
-
-        if (filters.length > 0) {
-            if (currentSsid && filters.includes(currentSsid)) {
-                // Ssid matches, start process
-                this._startMonitoring(currentSsid);
-            } else {
-                // Ssid does not match, stop process
-                this._stopMonitoringProcessOnly();
-                const displaySsid = currentSsid ? `'${currentSsid}'` : 'Disconnected';
-                this.subtitle = `Inactive (${displaySsid})`;
-                this.menu.setHeader('view-refresh-symbolic', 'WiFi Down Restart', `Inactive: SSID ${displaySsid} not tracked`);
-                this._statusItem.label.set_text(`Status: 🔴 Inactive (${displaySsid})`);
-                this._tcpItem.label.set_text('TCP Delta: N/A');
-            }
-        } else {
-            // No filter, start monitor
-            this._startMonitoring(currentSsid || 'Any');
-        }
-    }
-
     _onSettingsChanged(key) {
         if (this._isToggledOn) {
-            this._onNetworkChanged();
+            this._startMonitoring();
         }
     }
 
-    _startMonitoring(activeSsid) {
+    _startMonitoring() {
         this._stopMonitoringProcessOnly();
 
         this._cancellable = new Gio.Cancellable();
@@ -187,7 +134,7 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
             });
             this._proc.init(null);
 
-            this.subtitle = `Active (${activeSsid})`;
+            this.subtitle = 'Active';
             this.menu.setHeader('view-refresh-symbolic', 'WiFi Down Restart', `Monitoring: ${url}`);
             this._statusItem.label.set_text('Status: 🟡 Connecting...');
             this._tcpItem.label.set_text('TCP Delta: N/A');
@@ -230,6 +177,16 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
     _parseLine(line) {
         line = String(line).trim();
         console.log(`[wifi-down-restart] _parseLine: parsing "${line}"`);
+
+        // Handle SSID filtering messages from main.py
+        if (line.includes('not in filter list. Skipping probe.')) {
+            const ssidMatch = line.match(/SSID '(.*?)'/);
+            const ssid = ssidMatch ? ssidMatch[1] : 'Unknown';
+            this.subtitle = `Inactive (${ssid})`;
+            this._statusItem.label.set_text(`Status: 🔴 Inactive (${ssid})`);
+            this._tcpItem.label.set_text('TCP Delta: N/A');
+            return;
+        }
 
         // Parse probe line: e.g., probe=ok connected to 8.8.8.8:443 latency=12.3ms
         // or probe=fail DNS lookup timed out after 5.0s latency=n/a
@@ -309,10 +266,6 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
 
     destroy() {
         this._stopMonitoringProcessOnly();
-
-        if (this._nmClient && this._nmSignalId) {
-            this._nmClient.disconnect(this._nmSignalId);
-        }
 
         if (this._settings && this._settingsSignalId) {
             this._settings.disconnect(this._settingsSignalId);
