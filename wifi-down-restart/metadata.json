@@ -1,0 +1,17 @@
+{
+  "uuid": "wifi-down-restart@aziis98.github.io",
+  "settings-schema": "org.gnome.shell.extensions.wifi-down-restart",
+  "name": "WiFi Down Restart",
+  "description": "Monitors network connection drops and restarts Wi-Fi automatically. Can be restricted to specific Wi-Fi SSIDs.",
+  "shell-version": [
+    "45",
+    "46",
+    "47",
+    "48",
+    "49",
+    "50",
+    "51",
+    "52"
+  ],
+  "url": "https://github.com/aziis98/track-unipisa-down"
+}

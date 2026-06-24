@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.wifi-down-restart" path="/org/gnome/shell/extensions/wifi-down-restart/">
+    <key name="url" type="s">
+      <default>'https://www.google.com'</default>
+      <summary>URL to probe</summary>
+    </key>
+    <key name="interval" type="d">
+      <default>30.0</default>
+      <summary>Interval between checks in seconds</summary>
+    </key>
+    <key name="timeout" type="d">
+      <default>5.0</default>
+      <summary>Probe timeout in seconds</summary>
+    </key>
+    <key name="notify" type="b">
+      <default>true</default>
+      <summary>Enable desktop notifications on status change</summary>
+    </key>
+    <key name="restart-wifi" type="b">
+      <default>false</default>
+      <summary>Restart wifi on connection drop</summary>
+    </key>
+    <key name="restart-wifi-strategy" type="s">
+      <default>'auto'</default>
+      <summary>Wifi restart strategy (auto, dbus, nmcli)</summary>
+    </key>
+    <key name="wifi-filter" type="s">
+      <default>''</default>
+      <summary>Comma-separated list of WiFi SSIDs to restrict monitoring to</summary>
+    </key>
+  </schema>
+</schemalist>

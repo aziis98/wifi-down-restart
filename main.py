@@ -52,6 +52,10 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help="Wi-Fi restart strategy to use when --restart-wifi is enabled. Default: auto",
     )
+    parser.add_argument(
+        "--wifi-filter",
+        help="Comma-separated list of WiFi SSIDs to restrict monitoring to. If set, probe runs only when on these SSIDs.",
+    )
     return parser
 
 
@@ -282,6 +286,40 @@ def select_restart_wifi_strategy(strategy_name: str) -> RestartWifiStrategy | No
     return strategy if strategy.available() else None
 
 
+def get_current_wifi_ssid() -> str | None:
+    nmcli = which("nmcli")
+    if nmcli:
+        try:
+            result = subprocess.run(
+                [nmcli, "-t", "-f", "active,ssid", "dev", "wifi"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    if line.startswith("yes:"):
+                        return line.split(":", 1)[1].strip()
+        except Exception:
+            pass
+
+    iwgetid = which("iwgetid")
+    if iwgetid:
+        try:
+            result = subprocess.run(
+                [iwgetid, "-r"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except Exception:
+            pass
+
+    return None
+
+
 def monitor(
     url: str,
     interval: float,
@@ -289,17 +327,35 @@ def monitor(
     notify: bool,
     restart_wifi_on_drop: bool,
     restart_wifi_strategy: RestartWifiStrategy | None,
+    wifi_filter: list[str] | None,
 ) -> None:
     host, port, path = resolve_target(url)
     scheme = urlparse(url).scheme.lower()
     previous_status: bool | None = None
     status_changed_at = time.monotonic()
 
-    print(f"[{now_stamp()}] monitoring {url} every {interval:.1f}s")
+    wifi_filter_str = ", ".join(wifi_filter) if wifi_filter else "any"
+    print(f"[{now_stamp()}] monitoring {url} every {interval:.1f}s (wifi filter: {wifi_filter_str})")
 
     try:
         while True:
             started = time.monotonic()
+
+            if wifi_filter:
+                current_ssid = get_current_wifi_ssid()
+                if not current_ssid or current_ssid not in wifi_filter:
+                    ssid_display = current_ssid if current_ssid else "<none>"
+                    print(
+                        f"[{now_stamp()}] SSID '{ssid_display}' not in filter list. Skipping probe."
+                    )
+                    previous_status = None  # Reset state on ssid mismatch/disconnect
+                    elapsed = time.monotonic() - started
+                    remaining = interval - elapsed
+                    while remaining > 0:
+                        time.sleep(min(remaining, 0.5))
+                        remaining = interval - (time.monotonic() - started)
+                    continue
+
             tcp_before = read_tcp_counters()
             probe_ok, probe_message, probe_latency = tcp_probe(host, port, path, scheme, timeout)
             tcp_after = read_tcp_counters()
@@ -327,11 +383,14 @@ def monitor(
                 send_notification(f"Network probe {status}", body, success=probe_ok)
 
             if restart_wifi_on_drop and previous_status is True and not probe_ok:
-                if restart_wifi_strategy is None:
+                current_ssid = get_current_wifi_ssid()
+                if not current_ssid:
+                    print(f"[{now_stamp()}] wifi is down (not connected to any SSID), skipping restart")
+                elif restart_wifi_strategy is None:
                     print(f"[{now_stamp()}] restart wifi requested but no strategy is available")
                 else:
                     strategy_name = restart_wifi_strategy.__class__.__name__
-                    print(f"[{now_stamp()}] restarting wifi via {strategy_name}")
+                    print(f"[{now_stamp()}] restarting wifi via {strategy_name} (current SSID: {current_ssid})")
                     restart_wifi_strategy.restart()
 
             previous_status = probe_ok
@@ -349,6 +408,10 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
+    wifi_filter = None
+    if args.wifi_filter:
+        wifi_filter = [ssid.strip() for ssid in args.wifi_filter.split(",") if ssid.strip()]
+
     try:
         restart_wifi_strategy = select_restart_wifi_strategy(args.restart_wifi_strategy)
         monitor(
@@ -358,6 +421,7 @@ def main() -> int:
             args.notify,
             args.restart_wifi,
             restart_wifi_strategy,
+            wifi_filter,
         )
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
