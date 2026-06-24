@@ -77,3 +77,9 @@ To view the real-time output of the monitoring script spawned by the GNOME exten
 ```bash
 journalctl /usr/bin/gnome-shell -f -o cat | grep "wifi-down-restart"
 ```
+
+---
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
