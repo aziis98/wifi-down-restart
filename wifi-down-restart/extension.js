@@ -25,6 +25,11 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
         this._cancellable = null;
         this._isToggledOn = false;
 
+        this._restartCount = 0;
+        this._lastRestartTime = null;
+        this._restartTimes = [];
+        this._statsTimeoutId = null;
+
         // Set up the menu header
         this.menu.setHeader('view-refresh-symbolic', 'WiFi Down Restart', 'Monitoring inactive');
 
@@ -32,9 +37,9 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
         this._statusItem = new PopupMenu.PopupMenuItem('Status: 🔴 Stopped', { reactive: false });
         this.menu.addMenuItem(this._statusItem);
 
-        // TCP Delta menu item (read-only)
-        this._tcpItem = new PopupMenu.PopupMenuItem('TCP Delta: N/A', { reactive: false });
-        this.menu.addMenuItem(this._tcpItem);
+        // Stats menu item (read-only)
+        this._statsItem = new PopupMenu.PopupMenuItem('Restarts: N/A', { reactive: false });
+        this.menu.addMenuItem(this._statsItem);
 
         // Separator
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -73,6 +78,10 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
 
     _startMonitoring() {
         this._stopMonitoringProcessOnly();
+
+        this._restartCount = 0;
+        this._lastRestartTime = null;
+        this._restartTimes = [];
 
         this._cancellable = new Gio.Cancellable();
 
@@ -137,8 +146,9 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
             this.subtitle = 'Active';
             this.menu.setHeader('view-refresh-symbolic', 'WiFi Down Restart', `Monitoring: ${url}`);
             this._statusItem.label.set_text('Status: 🟡 Connecting...');
-            this._tcpItem.label.set_text('TCP Delta: N/A');
+            this._statsItem.label.set_text('Restarts: 0 (last: N/A, avg: N/A)');
 
+            this._startStatsTimer();
             this._readStdout();
         } catch (e) {
             console.error(`[WiFi Down Restart] Failed to start subprocess: ${e.message}`);
@@ -174,6 +184,53 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
         }
     }
 
+    _formatTimeSince(dt) {
+        if (!dt) return 'N/A';
+        const now = GLib.DateTime.new_now_local();
+        const diffSeconds = Math.round(now.difference(dt) / 1000000);
+        if (diffSeconds < 60) {
+            return `${diffSeconds}s ago`;
+        }
+        const diffMinutes = Math.floor(diffSeconds / 60);
+        const remSeconds = diffSeconds % 60;
+        return `${diffMinutes}m ${remSeconds}s ago`;
+    }
+
+    _formatAverageRestartTime() {
+        if (this._restartTimes.length === 0) {
+            return 'N/A';
+        }
+        const sum = this._restartTimes.reduce((a, b) => a + b, 0);
+        const avgSeconds = Math.round(sum / this._restartTimes.length);
+        if (avgSeconds < 60) {
+            return `${avgSeconds}s`;
+        }
+        const avgMinutes = Math.floor(avgSeconds / 60);
+        const remSeconds = avgSeconds % 60;
+        return `${avgMinutes}m ${remSeconds}s`;
+    }
+
+    _updateStatsLabel() {
+        const lastStr = this._formatTimeSince(this._lastRestartTime);
+        const avgStr = this._formatAverageRestartTime();
+        this._statsItem.label.set_text(`Restarts: ${this._restartCount} (last: ${lastStr}, avg: ${avgStr})`);
+    }
+
+    _startStatsTimer() {
+        this._stopStatsTimer();
+        this._statsTimeoutId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 10, () => {
+            this._updateStatsLabel();
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
+
+    _stopStatsTimer() {
+        if (this._statsTimeoutId) {
+            GLib.Source.remove(this._statsTimeoutId);
+            this._statsTimeoutId = null;
+        }
+    }
+
     _parseLine(line) {
         line = String(line).trim();
         console.log(`[wifi-down-restart] _parseLine: parsing "${line}"`);
@@ -184,8 +241,21 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
             const ssid = ssidMatch ? ssidMatch[1] : 'Unknown';
             this.subtitle = `Inactive (${ssid})`;
             this._statusItem.label.set_text(`Status: 🔴 Inactive (${ssid})`);
-            this._tcpItem.label.set_text('TCP Delta: N/A');
+            this._statsItem.label.set_text('Restarts: N/A');
             return;
+        }
+
+        // Parse restart line: e.g., restarting wifi via ...
+        if (line.includes('restarting wifi via')) {
+            console.log('[wifi-down-restart] _parseLine: matched "restarting wifi via"');
+            const now = GLib.DateTime.new_now_local();
+            this._restartCount++;
+            if (this._lastRestartTime) {
+                const diffSeconds = now.difference(this._lastRestartTime) / 1000000;
+                this._restartTimes.push(diffSeconds);
+            }
+            this._lastRestartTime = now;
+            this._updateStatsLabel();
         }
 
         // Parse probe line: e.g., probe=ok connected to 8.8.8.8:443 latency=12.3ms
@@ -220,30 +290,10 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
                 console.error(`[wifi-down-restart] _parseLine error: ${err.message}`);
             }
         }
-
-        // Parse tcp delta line: e.g., tcp delta: OutSegs=0, InSegs=0 (since 2.1m)
-        if (line.includes('tcp delta:')) {
-            console.log('[wifi-down-restart] _parseLine: matched "tcp delta:"');
-            const deltaMatch = line.match(/tcp delta:\s+(.*?)\s*\((.*?)\)/);
-            try {
-                if (deltaMatch) {
-                    const delta = deltaMatch[1];
-                    const duration = deltaMatch[2];
-                    this._tcpItem.label.set_text(`TCP: ${delta} (${duration})`);
-                } else {
-                    const deltaSimple = line.match(/tcp delta:\s+(.*)/);
-                    if (deltaSimple) {
-                        this._tcpItem.label.set_text(`TCP: ${deltaSimple[1]}`);
-                    }
-                }
-                console.log('[wifi-down-restart] _parseLine: successfully updated TCP label');
-            } catch (err) {
-                console.error(`[wifi-down-restart] _parseLine TCP error: ${err.message}`);
-            }
-        }
     }
 
     _stopMonitoringProcessOnly() {
+        this._stopStatsTimer();
         if (this._cancellable) {
             this._cancellable.cancel();
             this._cancellable = null;
@@ -259,7 +309,7 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
         this.subtitle = 'Stopped';
         this.menu.setHeader('view-refresh-symbolic', 'WiFi Down Restart', 'Monitoring inactive');
         this._statusItem.label.set_text('Status: 🔴 Stopped');
-        this._tcpItem.label.set_text('TCP Delta: N/A');
+        this._statsItem.label.set_text('Restarts: N/A');
         this.checked = false;
         this._isToggledOn = false;
     }
