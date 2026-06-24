@@ -1,14 +1,14 @@
 # WiFi Down Restart
 
-A lightweight connection monitoring tool and GNOME Shell Extension created to restart the internet connection on unstable networks (absolutely not related to some specific university wifi randomly dropping the connection after 20 minutes). It periodically probes a target URL, monitors outbound TCP packet counts, and automatically power-cycles the Wi-Fi interface if the connection drops.
+A lightweight connection monitoring tool and GNOME Shell Extension created to restart the internet connection on unstable networks (absolutely not related to some specific university wifi randomly dropping the connection after 20 minutes). It periodically probes a target URL and automatically power-cycles the Wi-Fi interface if the connection drops.
 
 ## Features
 
-- **Low-level TCP tracking**: Measures latency and monitors packet segment counts (e.g. `OutSegs`, `InSegs`, `RetransSegs`) without requiring `sudo`.
+- **DNS Timeout Protection**: Uses custom DNS resolution via `dnspython` to force strict timeouts on DNS queries, preventing the monitor loop from hanging when the Wi-Fi's DNS server stops responding.
 
 - **Automatic Recovery**: Power-cycles the Wi-Fi radio (using nmcli or DBus NetworkManager calls) when the probe transitions from active to inactive.
 
-- **SSID Filtering**: Restricts connectivity monitoring to a specified list of Wi-Fi networks (skips monitoring on public or hotspots).
+- **SSID Filtering**: Restricts connectivity monitoring to a specified list of Wi-Fi networks (skips monitoring on public or hotspot networks).
 
 - **GNOME Shell Extension**: Adds a quick settings toggle with a status submenu and a native settings preferences page.
 
