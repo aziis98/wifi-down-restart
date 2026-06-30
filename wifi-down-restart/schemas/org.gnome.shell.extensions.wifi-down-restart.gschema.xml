@@ -29,5 +29,13 @@
       <default>''</default>
       <summary>Comma-separated list of WiFi SSIDs to restrict monitoring to</summary>
     </key>
+    <key name="recheck-enabled" type="b">
+      <default>true</default>
+      <summary>Recheck connection before restarting Wi-Fi</summary>
+    </key>
+    <key name="recheck-delay" type="d">
+      <default>1.5</default>
+      <summary>Seconds to wait before rechecking connection</summary>
+    </key>
   </schema>
 </schemalist>

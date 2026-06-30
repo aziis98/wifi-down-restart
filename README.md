@@ -36,6 +36,15 @@ Run the monitor script:
 - `--restart-wifi`: Enable Wi-Fi radio power-cycling on connection drops.
 - `--restart-wifi-strategy {auto,dbus,nmcli}`: Choose the method to restart Wi-Fi.
 - `--wifi-filter SSIDS`: Comma-separated list of Wi-Fi SSIDs to restrict monitoring to.
+- `--recheck`: Perform a secondary connection recheck probe before executing a Wi-Fi restart.
+- `--recheck-delay DELAY`: Delay in seconds to wait before performing the secondary check (default: 1.5).
+
+### Timing Heuristics & Recheck Mechanism
+
+To prevent unnecessary and disruptive Wi-Fi restarts from transient drops (e.g., temporary packet loss), the tool utilizes the following timing settings:
+- **Probe Interval**: The baseline frequency of the network status check.
+- **Probe Timeout**: The strict timeout for DNS resolution and TCP socket establishment.
+- **Recheck Delay**: When a probe fails, the monitor pauses for this duration (default: `1.5s`) and retries the connection. If the retry succeeds, the connection is treated as recovered, and the Wi-Fi restart is skipped.
 
 ---
 

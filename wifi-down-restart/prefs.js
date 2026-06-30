@@ -1,5 +1,6 @@
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
+import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
@@ -97,6 +98,32 @@ export default class WifiDownRestartPreferences extends ExtensionPreferences {
         });
         settings.bind('restart-wifi', restartWifiRow, 'active', Gio.SettingsBindFlags.DEFAULT);
         recoveryGroup.add(restartWifiRow);
+
+        // Recheck switch
+        const recheckEnabledRow = new Adw.SwitchRow({
+            title: _('Recheck connection before restart'),
+            subtitle: _('Wait and probe again before power-cycling Wi-Fi to avoid false positives'),
+        });
+        settings.bind('recheck-enabled', recheckEnabledRow, 'active', Gio.SettingsBindFlags.DEFAULT);
+        recoveryGroup.add(recheckEnabledRow);
+
+        // Recheck delay
+        const recheckAdjustment = new Gtk.Adjustment({
+            lower: 0.5,
+            upper: 30.0,
+            step_increment: 0.5,
+            page_increment: 2.0,
+        });
+        const recheckDelayRow = new Adw.SpinRow({
+            title: _('Recheck Delay (seconds)'),
+            subtitle: _('Time to wait before performing the secondary probe'),
+            adjustment: recheckAdjustment,
+            value: settings.get_double('recheck-delay'),
+            digits: 1,
+        });
+        settings.bind('recheck-delay', recheckDelayRow, 'value', Gio.SettingsBindFlags.DEFAULT);
+        recheckEnabledRow.bind_property('active', recheckDelayRow, 'sensitive', GObject.BindingFlags.DEFAULT);
+        recoveryGroup.add(recheckDelayRow);
 
         // Restart Wifi Strategy dropdown
         const strategyModel = Gtk.StringList.new(['auto', 'dbus', 'nmcli']);

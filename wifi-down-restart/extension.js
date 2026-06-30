@@ -92,6 +92,8 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
         const restartWifi = this._settings.get_boolean('restart-wifi');
         const restartWifiStrategy = this._settings.get_string('restart-wifi-strategy') || 'auto';
         const wifiFilter = this._settings.get_string('wifi-filter') || '';
+        const recheckEnabled = this._settings.get_boolean('recheck-enabled');
+        const recheckDelay = this._settings.get_double('recheck-delay');
 
         // Resolve extension directory in case it's a symbolic link (common for local dev installations)
         let extDir = this._extension.dir;
@@ -134,6 +136,10 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
         }
         if (wifiFilter) {
             argv.push('--wifi-filter', wifiFilter);
+        }
+        if (recheckEnabled) {
+            argv.push('--recheck');
+            argv.push('--recheck-delay', String(recheckDelay));
         }
 
         try {

@@ -56,6 +56,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--wifi-filter",
         help="Comma-separated list of WiFi SSIDs to restrict monitoring to. If set, probe runs only when on these SSIDs.",
     )
+    parser.add_argument(
+        "--recheck",
+        action="store_true",
+        help="Perform a secondary probe check after a delay before restarting Wi-Fi to confirm it is still down",
+    )
+    parser.add_argument(
+        "--recheck-delay",
+        type=float,
+        default=1.5,
+        help="Delay in seconds before performing the secondary check. Default: 1.5",
+    )
     return parser
 
 
@@ -332,6 +343,8 @@ def monitor(
     restart_wifi_on_drop: bool,
     restart_wifi_strategy: RestartWifiStrategy | None,
     wifi_filter: list[str] | None,
+    recheck: bool,
+    recheck_delay: float,
 ) -> None:
     host, port, path = resolve_target(url)
     scheme = urlparse(url).scheme.lower()
@@ -387,15 +400,28 @@ def monitor(
                 send_notification(f"Network probe {status}", body, success=probe_ok)
 
             if restart_wifi_on_drop and previous_status is True and not probe_ok:
-                current_ssid = get_current_wifi_ssid()
-                if not current_ssid:
-                    print(f"[{now_stamp()}] wifi is down (not connected to any SSID), skipping restart")
-                elif restart_wifi_strategy is None:
-                    print(f"[{now_stamp()}] restart wifi requested but no strategy is available")
-                else:
-                    strategy_name = restart_wifi_strategy.__class__.__name__
-                    print(f"[{now_stamp()}] restarting wifi via {strategy_name} (current SSID: {current_ssid})")
-                    restart_wifi_strategy.restart()
+                should_restart = True
+                if recheck:
+                    print(f"[{now_stamp()}] probe failed. Waiting {recheck_delay:.1f}s to recheck...")
+                    time.sleep(recheck_delay)
+                    recheck_ok, recheck_msg, _ = tcp_probe(host, port, path, scheme, timeout)
+                    if recheck_ok:
+                        print(f"[{now_stamp()}] recheck=ok ({recheck_msg}). Connection recovered, skipping restart.")
+                        should_restart = False
+                        probe_ok = True  # Treat as recovered
+                    else:
+                        print(f"[{now_stamp()}] recheck=fail ({recheck_msg}). Connection still down.")
+
+                if should_restart:
+                    current_ssid = get_current_wifi_ssid()
+                    if not current_ssid:
+                        print(f"[{now_stamp()}] wifi is down (not connected to any SSID), skipping restart")
+                    elif restart_wifi_strategy is None:
+                        print(f"[{now_stamp()}] restart wifi requested but no strategy is available")
+                    else:
+                        strategy_name = restart_wifi_strategy.__class__.__name__
+                        print(f"[{now_stamp()}] restarting wifi via {strategy_name} (current SSID: {current_ssid})")
+                        restart_wifi_strategy.restart()
 
             previous_status = probe_ok
 
@@ -426,6 +452,8 @@ def main() -> int:
             args.restart_wifi,
             restart_wifi_strategy,
             wifi_filter,
+            args.recheck,
+            args.recheck_delay,
         )
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
