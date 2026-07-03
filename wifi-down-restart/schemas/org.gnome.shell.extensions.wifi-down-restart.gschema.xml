@@ -37,5 +37,9 @@
       <default>1.5</default>
       <summary>Seconds to wait before rechecking connection</summary>
     </key>
+    <key name="service-enabled" type="b">
+      <default>false</default>
+      <summary>Whether the monitoring service is enabled</summary>
+    </key>
   </schema>
 </schemalist>

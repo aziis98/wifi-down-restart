@@ -62,12 +62,19 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
         // Handle toggle state change
         this.connect('notify::checked', () => {
             this._isToggledOn = this.checked;
+            this._settings.set_boolean('service-enabled', this.checked);
+            this._settings.apply();
             if (this._isToggledOn) {
                 this._startMonitoring();
             } else {
                 this._stopMonitoring();
             }
         });
+
+        // Restore toggle state from persisted settings
+        if (this._settings.get_boolean('service-enabled')) {
+            this.checked = true;
+        }
     }
 
     _onSettingsChanged(key) {
