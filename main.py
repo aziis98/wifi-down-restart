@@ -399,7 +399,7 @@ def monitor(
                 )
                 send_notification(f"Network probe {status}", body, success=probe_ok)
 
-            if restart_wifi_on_drop and previous_status is True and not probe_ok:
+            if restart_wifi_on_drop and previous_status is not False and not probe_ok:
                 should_restart = True
                 if recheck:
                     print(f"[{now_stamp()}] probe failed. Waiting {recheck_delay:.1f}s to recheck...")
