@@ -83,10 +83,37 @@ class WifiDownRestartToggle extends QuickSettings.QuickMenuToggle {
         }
     }
 
+    _readDailyRestartCount() {
+        const logDir = GLib.get_home_dir() + '/.local/share/track-unipisa-down';
+        const logFile = logDir + '/restarts.log';
+        const logFileGio = Gio.File.new_for_path(logFile);
+        if (!logFileGio.query_exists(null)) {
+            return 0;
+        }
+
+        const today = new GLib.DateTime.now_local().format('%Y-%m-%d');
+        let count = 0;
+
+        try {
+            const contents = logFileGio.load_contents(null);
+            const text = String(contents[0]);
+            for (const line of text.split('\n')) {
+                if (line.startsWith(today)) {
+                    count++;
+                }
+            }
+        } catch (e) {
+            console.error(`[WiFi Down Restart] Error reading log file: ${e.message}`);
+            return 0;
+        }
+
+        return count;
+    }
+
     _startMonitoring() {
         this._stopMonitoringProcessOnly();
 
-        this._restartCount = 0;
+        this._restartCount = this._readDailyRestartCount();
         this._lastRestartTime = null;
         this._restartTimes = [];
 

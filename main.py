@@ -9,6 +9,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
+from pathlib import Path
 from shutil import which
 from typing import Protocol, runtime_checkable
 from urllib.parse import urlparse
@@ -72,6 +73,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 def now_stamp() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+RESTART_LOG_DIR = Path.home() / ".local" / "share" / "track-unipisa-down"
+RESTART_LOG_FILE = RESTART_LOG_DIR / "restarts.log"
+
+
+def log_restart(ssid: str, probe_message: str, recheck_outcome: str) -> None:
+    RESTART_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with RESTART_LOG_FILE.open("a", encoding="utf-8") as f:
+        f.write(f"{timestamp} | SSID: {ssid} | recheck={recheck_outcome} | error: {probe_message}\n")
 
 
 def resolve_target(url: str) -> tuple[str, int, str]:
@@ -401,6 +413,7 @@ def monitor(
 
             if restart_wifi_on_drop and previous_status is not False and not probe_ok:
                 should_restart = True
+                recheck_outcome = "disabled"
                 if recheck:
                     print(f"[{now_stamp()}] probe failed. Waiting {recheck_delay:.1f}s to recheck...")
                     time.sleep(recheck_delay)
@@ -410,6 +423,7 @@ def monitor(
                         should_restart = False
                         probe_ok = True  # Treat as recovered
                     else:
+                        recheck_outcome = "fail"
                         print(f"[{now_stamp()}] recheck=fail ({recheck_msg}). Connection still down.")
 
                 if should_restart:
@@ -421,6 +435,7 @@ def monitor(
                     else:
                         strategy_name = restart_wifi_strategy.__class__.__name__
                         print(f"[{now_stamp()}] restarting wifi via {strategy_name} (current SSID: {current_ssid})")
+                        log_restart(current_ssid, probe_message, recheck_outcome)
                         restart_wifi_strategy.restart()
 
             previous_status = probe_ok

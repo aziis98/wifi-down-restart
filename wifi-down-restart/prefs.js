@@ -1,5 +1,6 @@
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 import {ExtensionPreferences, gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
@@ -142,6 +143,20 @@ export default class WifiDownRestartPreferences extends ExtensionPreferences {
             settings.set_string('restart-wifi-strategy', strategies[strategyRow.selected]);
         });
         recoveryGroup.add(strategyRow);
+
+        // Group 4: Logging
+        const logGroup = new Adw.PreferencesGroup({
+            title: _('Logging'),
+            description: _('Restart events are logged to a file for troubleshooting'),
+        });
+        page.add(logGroup);
+
+        const logPath = GLib.get_home_dir() + '/.local/share/track-unipisa-down/restarts.log';
+        const logInfoRow = new Adw.ActionRow({
+            title: _('Restart log location'),
+            subtitle: logPath,
+        });
+        logGroup.add(logInfoRow);
 
         window.add(page);
     }
